@@ -1,75 +1,69 @@
-# app.py
 import streamlit as st
 import pandas as pd
-import numpy as np
-import os
 import joblib
-from model_training import train_and_save, load_data, preprocess_features
-import plotly.express as px
 
-MODEL_PATH = 'models/pricing_model.pkl'
-DATA_PATH = 'data/hotel_bookings.csv'
+st.title("Hotel Adaptive Pricing System")
 
-st.set_page_config(page_title='Hotel Adaptive Pricing', layout='wide')
+# Load trained model
+model = joblib.load("models/pricing_model.pkl")
 
-st.title('Customer Behavior Analysis Based Adaptive Pricing System for Hotel Management')
-st.markdown('''
-This app trains a pricing model (automatically on first run) and shows interactive dashboards. Enter booking details to get a recommended ADR (room price).
-''')
+st.header("Booking Information")
 
-# Ensure model exists (auto-train if missing)
-if not os.path.exists(MODEL_PATH):
-    with st.spinner('Training pricing model (this may take a minute)...'):
-        model_file = train_and_save(DATA_PATH, model_dir='models')
-    st.success('Model trained and saved.')
+# User Inputs
+hotel = st.selectbox(
+    "Hotel Type",
+    ["Resort Hotel", "City Hotel"]
+)
 
-# Load model
-model = joblib.load(MODEL_PATH)
+lead_time = st.slider(
+    "Lead Time (Days)",
+    0, 365, 30
+)
 
-# Load data for dashboards
-try:
-    df = load_data(DATA_PATH)
-except Exception as e:
-    st.error(f'Could not load dataset at {DATA_PATH}: {e}')
-    st.stop()
+month = st.selectbox(
+    "Arrival Month",
+    [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December"
+    ]
+)
 
-# Preprocess for visualizations
-# Clean month names to numeric for plotting month trend
-def month_to_num(m):
-    months = {
-        'January':1,'February':2,'March':3,'April':4,'May':5,'June':6,
-        'July':7,'August':8,'September':9,'October':10,'November':11,'December':12
-    }
-    return months.get(m, None)
+customer_type = st.selectbox(
+    "Customer Type",
+    ["Transient", "Contract", "Transient-Party", "Group"]
+)
 
-if 'arrival_date_month' in df.columns:
-    df['arrival_month_num'] = df['arrival_date_month'].map(lambda x: month_to_num(x))
+room_type = st.selectbox(
+    "Room Type",
+    ["A","B","C","D","E","F","G"]
+)
 
-# Layout: two columns for dashboards and prediction
-left, right = st.columns([2,1])
+previous_bookings = st.number_input(
+    "Previous Successful Bookings",
+    0, 50, 0
+)
 
-with left:
-    st.subheader('Customer Behavior Dashboard')
-    # 1. Customer loyalty distribution
-    st.markdown('**Customer loyalty (previous successful bookings)**')
-    fig1 = px.histogram(df, x='previous_bookings_not_canceled', nbins=20, title='Previous successful bookings distribution')
-    st.plotly_chart(fig1, use_container_width=True)
+# Convert month to number
+month_map = {
+"January":1,"February":2,"March":3,"April":4,
+"May":5,"June":6,"July":7,"August":8,
+"September":9,"October":10,"November":11,"December":12
+}
 
-    # 2. Lead time distribution
-    st.markdown('**Lead time distribution (days between booking and arrival)**')
-    fig2 = px.histogram(df, x='lead_time', nbins=50, title='Lead time distribution')
-    st.plotly_chart(fig2, use_container_width=True)
+arrival_month = month_map[month]
 
-    # 3. Customer type distribution
-    st.markdown('**Customer type distribution**')
-    if 'customer_type' in df.columns:
-        fig3 = px.pie(df, names='customer_type', title='Customer type share')
-        st.plotly_chart(fig3, use_container_width=True)
+# Predict Button
+if st.button("Predict Price"):
 
-    # 4. Room type preference
-    st.markdown('**Room type preference (reserved)**')
-    if 'reserved_room_type' in df.columns:
-        top_rooms = df['reserved_room_type'].value_counts().reset_index()
-        top_rooms.columns = ['room','count']
-        fig4 = px.bar(top_rooms, x='room', y='count', title='Reserved room types')
-     
+    input_data = pd.DataFrame({
+        "hotel":[hotel],
+        "lead_time":[lead_time],
+        "arrival_month":[arrival_month],
+        "reserved_room_type":[room_type],
+        "customer_type":[customer_type],
+        "previous_bookings_not_canceled":[previous_bookings]
+    })
+
+    prediction = model.predict(input_data)[0]
+
+    st.success(f"Recommended Room Price: ₹ {round(prediction,2)}")
